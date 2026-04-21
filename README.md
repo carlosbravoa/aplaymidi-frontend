@@ -13,6 +13,10 @@ A retro-styled GTK3 MIDI player for Linux/GNOME, built around `aplaymidi`.
   [⏮] [⏹] [⏵] [⏭] [⏏] [⚙]
 ```
 
+## Why?
+
+I love retro stuff. I have a MT-32 external sound module (not the original but the RPi version) connected to an Ubuntu PC via a cheap but performant Midi cable (DOREMiDi) and the only way so far —that was simple enough— to play simple good-ol midi files (.mid) was using the command-line with `aplaymidi`. I haven't found any similar app that fits exactly this use-case, so I vibe-coded mine and the result is exactly what I needed. 
+
 ## Features
 
 - Retro phosphor-green terminal aesthetic
