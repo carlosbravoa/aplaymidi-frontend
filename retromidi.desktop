@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=RetroMIDI
+Comment=Retro-styled MIDI player using aplaymidi
+Exec=retromidi
+Icon=multimedia-player
+Terminal=false
+Categories=AudioVideo;Player;Music;
+Keywords=midi;music;player;alsa;sequencer;
+StartupNotify=true

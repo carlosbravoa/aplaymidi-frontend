@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "retromidi"
+version = "1.0.0"
+description = "A retro-styled GTK MIDI player for Linux/GNOME using aplaymidi"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+# PyGObject (gi) must be installed system-wide via apt:
+#   sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0
+dependencies = []
+
+[project.scripts]
+retromidi = "retromidi:main"
+
+[project.optional-dependencies]
+dev = ["build", "twine"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["retromidi*"]
