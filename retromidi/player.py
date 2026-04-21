@@ -25,6 +25,9 @@ class RetroMIDIPlayer(Gtk.Window):
         self.process = None
         self.is_playing = False
         self.play_thread = None
+        self.shuffle = self.config.get("shuffle", False)
+        self.recurse = self.config.get("recurse", False)
+        self._shuffle_history = []   # indices already played in shuffle mode
 
         self._build_ui()
         self._load_css()
@@ -97,6 +100,27 @@ class RetroMIDIPlayer(Gtk.Window):
             btn.set_tooltip_text(tooltip)
             btn.connect("clicked", handler)
             transport.pack_start(btn, True, True, 0)
+
+        # Second row: toggle buttons
+        toggles = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        toggles.get_style_context().add_class("retro-toggles")
+        outer.pack_start(toggles, False, False, 0)
+
+        self.shuffle_btn = Gtk.ToggleButton(label="⇀ SHUFFLE")
+        self.shuffle_btn.get_style_context().add_class("retro-btn")
+        self.shuffle_btn.get_style_context().add_class("retro-btn-toggle")
+        self.shuffle_btn.set_tooltip_text("Toggle shuffle playback")
+        self.shuffle_btn.set_active(self.shuffle)
+        self.shuffle_btn.connect("toggled", self._on_shuffle_toggled)
+        toggles.pack_start(self.shuffle_btn, True, True, 0)
+
+        self.recurse_btn = Gtk.ToggleButton(label="⤵ SUBFOLDERS")
+        self.recurse_btn.get_style_context().add_class("retro-btn")
+        self.recurse_btn.get_style_context().add_class("retro-btn-toggle")
+        self.recurse_btn.set_tooltip_text("Include files from subfolders")
+        self.recurse_btn.set_active(self.recurse)
+        self.recurse_btn.connect("toggled", self._on_recurse_toggled)
+        toggles.pack_start(self.recurse_btn, True, True, 0)
 
         # Playlist
         pl_frame = Gtk.Frame()
@@ -292,6 +316,27 @@ class RetroMIDIPlayer(Gtk.Window):
             font-size: 10px;
             color: #405040;
         }
+        .retro-toggles {
+            background-color: #111;
+            padding: 5px 12px 7px 12px;
+            border-bottom: 1px solid #333;
+        }
+        .retro-btn-toggle {
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: #506050;
+            border-color: #2a3a2a;
+            padding: 4px 4px;
+        }
+        .retro-btn-toggle:checked {
+            background-color: #0a2510;
+            color: #00ff80;
+            border-color: #00c050;
+        }
+        .retro-btn-toggle:hover {
+            border-color: #508050;
+            color: #80c080;
+        }
         """
         provider = Gtk.CssProvider()
         provider.load_from_data(css)
@@ -337,15 +382,28 @@ class RetroMIDIPlayer(Gtk.Window):
     def _load_directory(self, path):
         self.playlist_store.clear()
         self.playlist = []
+        self._shuffle_history = []
         midi_exts = {".mid", ".midi", ".MID", ".MIDI"}
-        files = sorted(
-            [f for f in Path(path).iterdir()
-             if f.is_file() and f.suffix in midi_exts],
-            key=lambda f: f.name.lower()
-        )
+        root = Path(path)
+
+        if self.recurse:
+            files = sorted(
+                [f for f in root.rglob("*")
+                 if f.is_file() and f.suffix in midi_exts],
+                key=lambda f: (str(f.parent).lower(), f.name.lower())
+            )
+        else:
+            files = sorted(
+                [f for f in root.iterdir()
+                 if f.is_file() and f.suffix in midi_exts],
+                key=lambda f: f.name.lower()
+            )
+
         for f in files:
             self.playlist.append(str(f))
-            self.playlist_store.append([f.name, str(f)])
+            # Show relative path when recursing so subdir is visible
+            display = str(f.relative_to(root)) if self.recurse else f.name
+            self.playlist_store.append([display, str(f)])
 
         self.current_index = 0 if self.playlist else -1
         self.config.set("last_dir", str(path))
@@ -405,11 +463,25 @@ class RetroMIDIPlayer(Gtk.Window):
     def _auto_next(self):
         if not self.is_playing:
             return
-        if self.current_index + 1 < len(self.playlist):
+        if self.shuffle:
+            self._play_shuffle_next()
+        elif self.current_index + 1 < len(self.playlist):
             self.current_index += 1
             self._play_current()
         else:
             self._set_stopped()
+
+    def _play_shuffle_next(self):
+        import random
+        remaining = [i for i in range(len(self.playlist))
+                     if i not in self._shuffle_history]
+        if not remaining:
+            # Full cycle done — restart
+            self._shuffle_history = []
+            remaining = list(range(len(self.playlist)))
+        self.current_index = random.choice(remaining)
+        self._shuffle_history.append(self.current_index)
+        self._play_current()
 
     def _stop_process(self):
         self.is_playing = False
@@ -458,6 +530,24 @@ class RetroMIDIPlayer(Gtk.Window):
         self._stop_vu_animation()
 
     # ── Handlers ─────────────────────────────────────────────────────────────
+
+    def _on_shuffle_toggled(self, btn):
+        self.shuffle = btn.get_active()
+        self._shuffle_history = []
+        self.config.set("shuffle", self.shuffle)
+        self.config.save()
+
+    def _on_recurse_toggled(self, btn):
+        self.recurse = btn.get_active()
+        self.config.set("recurse", self.recurse)
+        self.config.save()
+        # Reload current directory with new setting
+        last = self.config.get("last_dir")
+        if last and os.path.isdir(last):
+            was_playing = self.is_playing
+            self._stop_process()
+            self._set_stopped()
+            self._load_directory(last)
 
     def _on_play(self, btn):
         if self.is_playing:

@@ -16,6 +16,8 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULTS = {
     "port": "20:0",
     "last_dir": "",
+    "shuffle": False,
+    "recurse": False,
 }
 
 
