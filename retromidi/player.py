@@ -420,6 +420,37 @@ class RetroMIDIPlayer(Gtk.Window):
             except subprocess.TimeoutExpired:
                 self.process.kill()
         self.process = None
+        self._midi_reset()
+
+    def _midi_reset(self):
+        """Send all_notes_off.mid to silence stuck notes on every channel."""
+        reset_file = self.config.get("reset_midi", "")
+        if not reset_file:
+            # Auto-discover: look next to current song, then in config dir
+            from .config import CONFIG_DIR
+            candidates = []
+            if self.playlist and 0 <= self.current_index < len(self.playlist):
+                song_dir = Path(self.playlist[self.current_index]).parent
+                candidates.append(song_dir / "all_notes_off.mid")
+            candidates.append(CONFIG_DIR / "all_notes_off.mid")
+            for c in candidates:
+                if c.exists():
+                    reset_file = str(c)
+                    break
+
+        if not reset_file:
+            return
+
+        port = self.config.get("port", "20:0")
+        try:
+            subprocess.run(
+                ["aplaymidi", "--port", port, reset_file],
+                timeout=5,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass  # Never block UI for reset failures
 
     def _set_stopped(self):
         self.is_playing = False
@@ -443,22 +474,32 @@ class RetroMIDIPlayer(Gtk.Window):
         self._set_stopped()
 
     def _on_prev(self, btn):
+        if not self.playlist:
+            return
+        was_playing = self.is_playing
         self._stop_process()
-        if self.playlist:
-            self.current_index = max(0, self.current_index - 1)
+        self.current_index = max(0, self.current_index - 1)
+        if was_playing:
+            self._play_current()
+        else:
             self._select_row(self.current_index)
-            self._set_stopped()
             self.now_playing_label.set_text(
                 Path(self.playlist[self.current_index]).name)
+            self._set_stopped()
 
     def _on_next(self, btn):
+        if not self.playlist:
+            return
+        was_playing = self.is_playing
         self._stop_process()
-        if self.playlist:
-            self.current_index = min(len(self.playlist) - 1, self.current_index + 1)
+        self.current_index = min(len(self.playlist) - 1, self.current_index + 1)
+        if was_playing:
+            self._play_current()
+        else:
             self._select_row(self.current_index)
-            self._set_stopped()
             self.now_playing_label.set_text(
                 Path(self.playlist[self.current_index]).name)
+            self._set_stopped()
 
     def _on_open_dir(self, btn):
         dialog = Gtk.FileChooserDialog(
@@ -554,6 +595,40 @@ class SettingsDialog:
         manual_entry.set_placeholder_text("e.g. 20:0 or 128:0")
         box.pack_start(manual_entry, False, False, 0)
 
+        # Reset MIDI file
+        reset_label = Gtk.Label(label="MIDI Reset file (all_notes_off.mid):")
+        reset_label.set_xalign(0)
+        box.pack_start(reset_label, False, False, 0)
+
+        reset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        reset_entry = Gtk.Entry()
+        reset_entry.set_text(self.config.get("reset_midi", ""))
+        reset_entry.set_placeholder_text("Auto-detect: next to songs or ~/.config/retromidi/")
+        reset_entry.set_hexpand(True)
+        reset_box.pack_start(reset_entry, True, True, 0)
+        browse_btn = Gtk.Button(label="Browse…")
+
+        def _browse_reset(b):
+            d = Gtk.FileChooserDialog(
+                title="Select all_notes_off.mid",
+                parent=dialog,
+                action=Gtk.FileChooserAction.OPEN,
+            )
+            d.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                          Gtk.STOCK_OPEN,   Gtk.ResponseType.OK)
+            ff = Gtk.FileFilter()
+            ff.set_name("MIDI files")
+            ff.add_pattern("*.mid")
+            ff.add_pattern("*.midi")
+            d.add_filter(ff)
+            if d.run() == Gtk.ResponseType.OK:
+                reset_entry.set_text(d.get_filename())
+            d.destroy()
+
+        browse_btn.connect("clicked", _browse_reset)
+        reset_box.pack_start(browse_btn, False, False, 0)
+        box.pack_start(reset_box, False, False, 0)
+
         # Raw aplaymidi -l output
         raw_label = Gtk.Label(label="Available ports (aplaymidi -l):")
         raw_label.set_xalign(0)
@@ -583,6 +658,7 @@ class SettingsDialog:
             else:
                 chosen_port = ""
             self.config.set("port", chosen_port)
+            self.config.set("reset_midi", reset_entry.get_text().strip())
             self.config.save()
             self.parent.refresh_port_label()
 

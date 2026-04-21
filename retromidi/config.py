@@ -5,7 +5,9 @@ Stores settings in ~/.config/retromidi/config.json
 
 import json
 import os
+import shutil
 from pathlib import Path
+from importlib import resources
 
 
 CONFIG_DIR = Path.home() / ".config" / "retromidi"
@@ -20,7 +22,22 @@ DEFAULTS = {
 class Config:
     def __init__(self):
         self._data = dict(DEFAULTS)
+        self._install_bundled_assets()
         self._load()
+
+    def _install_bundled_assets(self):
+        """Copy bundled all_notes_off.mid to config dir if not already there."""
+        dest = CONFIG_DIR / "all_notes_off.mid"
+        if dest.exists():
+            return
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            # Python 3.9+ path
+            ref = resources.files("retromidi").joinpath("all_notes_off.mid")
+            with resources.as_file(ref) as src:
+                shutil.copy2(src, dest)
+        except Exception:
+            pass  # Non-fatal: user can set path manually in settings
 
     def _load(self):
         if CONFIG_FILE.exists():

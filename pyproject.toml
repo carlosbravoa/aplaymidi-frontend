@@ -22,3 +22,6 @@ dev = ["build", "twine"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["retromidi*"]
+
+[tool.setuptools.package-data]
+retromidi = ["all_notes_off.mid"]
